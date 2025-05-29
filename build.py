@@ -1,14 +1,59 @@
-#!/usr/bin/env python3
 """
 Build script for Missing File Scanner
 Creates a standalone executable using PyInstaller
+Cross-platform support for Windows, Linux, and macOS
 """
 
 import os
 import sys
 import subprocess
 import shutil
+import platform
 from pathlib import Path
+
+def get_platform_info():
+    """Get platform-specific information"""
+    system = platform.system().lower()
+    
+    if system == "windows":
+        return {
+            "name": "Windows",
+            "exe_extension": ".exe",
+            "data_separator": ";",
+            "script_extension": ".bat",
+            "script_template": """@echo off
+echo Starting Missing File Scanner...
+MissingFileScanner{exe_ext}
+pause
+""",
+            "icon": "📊"
+        }
+    elif system == "darwin":  # macOS
+        return {
+            "name": "macOS",
+            "exe_extension": "",
+            "data_separator": ":",
+            "script_extension": ".command",
+            "script_template": """#!/bin/bash
+echo "Starting Missing File Scanner..."
+./MissingFileScanner{exe_ext}
+read -p "Press any key to continue..."
+""",
+            "icon": "🍎"
+        }
+    else:  # Linux and other Unix-like systems
+        return {
+            "name": "Linux",
+            "exe_extension": "",
+            "data_separator": ":",
+            "script_extension": ".sh",
+            "script_template": """#!/bin/bash
+echo "Starting Missing File Scanner..."
+./MissingFileScanner{exe_ext}
+read -p "Press any key to continue..."
+""",
+            "icon": "🐧"
+        }
 
 def check_pyinstaller():
     """Check if PyInstaller is installed, install if not"""
@@ -36,7 +81,8 @@ def clean_build_dirs():
 
 def create_executable():
     """Create the executable using PyInstaller"""
-    print("🔨 Building executable...")
+    platform_info = get_platform_info()
+    print(f"🔨 Building executable for {platform_info['name']} {platform_info['icon']}...")
     
     # PyInstaller command with options
     cmd = [
@@ -45,7 +91,7 @@ def create_executable():
         "--windowed",                   # Hide console window (GUI app)
         "--name=MissingFileScanner",    # Name of the executable
         "--icon=NONE",                  # No icon (can be added later)
-        "--add-data=requirements.txt;.", # Include requirements.txt
+        f"--add-data=requirements.txt{platform_info['data_separator']}.", # Include requirements.txt with correct separator
         "--distpath=dist",              # Output directory
         "--workpath=build",             # Build directory
         "--specpath=.",                 # Spec file location
@@ -60,14 +106,15 @@ def create_executable():
             print("✅ Executable created successfully!")
             
             # Check if executable exists
-            exe_path = Path("dist/MissingFileScanner.exe")
+            exe_name = f"MissingFileScanner{platform_info['exe_extension']}"
+            exe_path = Path("dist") / exe_name
             if exe_path.exists():
                 size_mb = exe_path.stat().st_size / (1024 * 1024)
                 print(f"📦 Executable location: {exe_path.absolute()}")
                 print(f"📏 File size: {size_mb:.1f} MB")
                 return True
             else:
-                print("❌ Executable not found in expected location")
+                print(f"❌ Executable not found in expected location: {exe_path}")
                 return False
         else:
             print("❌ PyInstaller failed:")
@@ -80,7 +127,8 @@ def create_executable():
 
 def create_portable_package():
     """Create a portable package with the executable and documentation"""
-    print("📦 Creating portable package...")
+    platform_info = get_platform_info()
+    print(f"📦 Creating portable package for {platform_info['name']}...")
     
     package_dir = Path("MissingFileScanner_Portable")
     
@@ -90,10 +138,16 @@ def create_portable_package():
     package_dir.mkdir()
     
     # Copy executable
-    exe_source = Path("dist/MissingFileScanner.exe")
+    exe_name = f"MissingFileScanner{platform_info['exe_extension']}"
+    exe_source = Path("dist") / exe_name
     if exe_source.exists():
-        shutil.copy2(exe_source, package_dir / "MissingFileScanner.exe")
-        print("✅ Copied executable")
+        shutil.copy2(exe_source, package_dir / exe_name)
+        print(f"✅ Copied executable: {exe_name}")
+        
+        # Make executable on Unix-like systems
+        if platform_info['exe_extension'] == "":
+            os.chmod(package_dir / exe_name, 0o755)
+            print("✅ Set executable permissions")
     
     # Copy documentation
     files_to_copy = ["README.md", "requirements.txt"]
@@ -102,21 +156,29 @@ def create_portable_package():
             shutil.copy2(file_name, package_dir / file_name)
             print(f"✅ Copied {file_name}")
     
-    # Create a simple batch file for easy running
-    batch_content = """@echo off
-echo Starting Missing File Scanner...
-MissingFileScanner.exe
-pause
-"""
-    with open(package_dir / "Run_Scanner.bat", "w") as f:
-        f.write(batch_content)
-    print("✅ Created Run_Scanner.bat")
+    # Create platform-specific launcher script
+    script_name = f"Run_Scanner{platform_info['script_extension']}"
+    script_content = platform_info['script_template'].format(exe_ext=platform_info['exe_extension'])
+    
+    script_path = package_dir / script_name
+    with open(script_path, "w", newline='\n') as f:
+        f.write(script_content)
+    
+    # Make script executable on Unix-like systems
+    if platform_info['script_extension'] in ['.sh', '.command']:
+        os.chmod(script_path, 0o755)
+        print(f"✅ Created executable launcher script: {script_name}")
+    else:
+        print(f"✅ Created launcher script: {script_name}")
     
     print(f"📦 Portable package created: {package_dir.absolute()}")
 
 def main():
     """Main build process"""
-    print("🚀 Missing File Scanner - Build Script")
+    platform_info = get_platform_info()
+    
+    print(f"🚀 Missing File Scanner - Build Script")
+    print(f"{platform_info['icon']} Building for {platform_info['name']}")
     print("=" * 50)
     
     # Check if main script exists
@@ -138,11 +200,15 @@ def main():
     # Step 4: Create portable package
     create_portable_package()
     
+    exe_name = f"MissingFileScanner{platform_info['exe_extension']}"
+    script_name = f"Run_Scanner{platform_info['script_extension']}"
+    
     print("\n" + "=" * 50)
     print("🎉 Build completed successfully!")
-    print("\nFiles created:")
-    print("  📁 dist/MissingFileScanner.exe - Standalone executable")
-    print("  📁 MissingFileScanner_Portable/ - Portable package")
+    print(f"\nFiles created for {platform_info['name']}:")
+    print(f"  📁 dist/{exe_name} - Standalone executable")
+    print(f"  📁 MissingFileScanner_Portable/ - Portable package")
+    print(f"  📄 MissingFileScanner_Portable/{script_name} - Launcher script")
     print("\nYou can now distribute the executable or the entire portable folder.")
     
     return True
